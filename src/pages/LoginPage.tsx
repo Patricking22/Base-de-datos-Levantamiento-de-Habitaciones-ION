@@ -10,14 +10,36 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+ import { useState, FormEvent } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { Hospital } from 'lucide-react'
+import { useNavigate } from 'react-router-dom' // <-- Agregamos esto
+
+export default function LoginPage() {
+  const { signIn } = useAuth()
+  const navigate = useNavigate() // <-- Inicializamos el navegador
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    
     const { error } = await signIn(email, password)
-    if (error) setError(error)
-    setLoading(false)
-  }
+    
+    if (error) {
+      setError(error)
+      setLoading(false)
+    } else {
+      // Si el login es exitoso, forzamos la redirección a la raíz (Pisos)
+      navigate('/', { replace: true }) 
+    }
+  
+
+  // ... el resto del return se queda exactamente igual ...
 
   return (
     <div className="min-h-screen flex flex-col justify-center px-6 bg-slate-50">
