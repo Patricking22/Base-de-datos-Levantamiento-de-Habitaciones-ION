@@ -33,8 +33,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  const signIn = async (email: string, password: string) => {
+   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
+    
+    // Si no hay error, esperamos un instante para que el AuthProvider
+    // actualice el estado del usuario antes de redirigir.
+    if (!error) {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+    
     return { error: error?.message ?? null }
   }
 
