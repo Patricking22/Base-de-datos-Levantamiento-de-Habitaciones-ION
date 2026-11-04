@@ -4,6 +4,59 @@ import type { Fotografia } from '../types/database'
 import { Camera, Image as ImageIcon, Trash2, Loader2, MapPin  } from 'lucide-react'
 import VisorFoto from './VisorFoto'
 
+// Función para comprimir la imagen antes de subirla
+const comprimirImagen = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.readAsDataURL(file)
+    reader.onload = (event) => {
+      const img = new Image()
+      img.src = event.target?.result as string
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX_WIDTH = 1280
+        const MAX_HEIGHT = 1280
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width
+            width = MAX_WIDTH
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height
+            height = MAX_HEIGHT
+          }
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const newFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              })
+              resolve(newFile)
+            } else {
+              reject(new Error('Error al comprimir'))
+            }
+          },
+          'image/jpeg',
+          0.7 // 0.7 significa 70% de calidad (excelente balance)
+        )
+      }
+      img.onerror = (error) => reject(error)
+    }
+    reader.onerror = (error) => reject(error)
+  })
+}
+
 export default function TabFotos({ habitacionId }: { habitacionId: string }) {
   const [fotos, setFotos] = useState<Fotografia[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,35 +90,45 @@ export default function TabFotos({ habitacionId }: { habitacionId: string }) {
     cargarFotos()
   }, [habitacionId])
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileOriginal = e.target.files?.[0]
+    if (!fileOriginal) return
 
     setSubiendo(true)
-    const fileExt = file.name.split('.').pop()
-    const fileName = `${habitacionId}/${Date.now()}.${fileExt}`
     
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('fotos-levantamiento')
-      .upload(fileName, file)
+    try {
+      // AQUÍ COMPRIMIMOS LA FOTO ANTES DE SUBIRLA
+      const file = await comprimirImagen(fileOriginal)
 
-    if (uploadError) {
-      alert('Error al subir foto: ' + uploadError.message)
+      const fileExt = 'jpg' // Ahora siempre será jpg
+      const fileName = `${habitacionId}/${Date.now()}.${fileExt}`
+      
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('fotos-levantamiento')
+        .upload(fileName, file)
+
+      if (uploadError) {
+        alert('Error al subir foto: ' + uploadError.message)
+        setSubiendo(false)
+        return
+      }
+
+      await supabase
+        .from('fotografias')
+        .insert({
+          entidad_tipo: 'habitacion',
+          entidad_id: habitacionId,
+          storage_path: uploadData.path,
+        })
+
+      await cargarFotos()
+    } catch (err) {
+      alert('Error al procesar la imagen')
+      console.error(err)
+    } finally {
       setSubiendo(false)
-      return
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
-
-    await supabase
-      .from('fotografias')
-      .insert({
-        entidad_tipo: 'habitacion',
-        entidad_id: habitacionId,
-        storage_path: uploadData.path,
-      })
-
-    await cargarFotos()
-    setSubiendo(false)
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const eliminarFoto = async (e: React.MouseEvent, foto: Fotografia) => {
